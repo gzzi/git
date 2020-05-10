@@ -450,23 +450,22 @@ struct foreach_cb {
 	const char *prefix;
 	int quiet;
 	int recursive;
-	int only_active;
+	int active;
 };
-#define FOREACH_CB_INIT { 0 }
 
-static void runcommand_in_submodule_cb(const struct cache_entry *list_item,
-				       void *cb_data)
+#define FOREACH_BOOL_FILTER_NOT_SET -1
+
+#define FOREACH_CB_INIT { .active=FOREACH_BOOL_FILTER_NOT_SET }
+
+static void runcommand_in_submodule(const struct cache_entry *list_item,
+				    struct foreach_cb *info)
 {
-	struct foreach_cb *info = cb_data;
 	const char *path = list_item->name;
 	const struct object_id *ce_oid = &list_item->oid;
 
 	const struct submodule *sub;
 	struct child_process cp = CHILD_PROCESS_INIT;
 	char *displaypath;
-
-	if (info->only_active && !is_submodule_active(the_repository, path))
-		return;
 
 	displaypath = get_submodule_displaypath(path, info->prefix);
 
@@ -559,6 +558,22 @@ cleanup:
 	free(displaypath);
 }
 
+static void runcommand_in_submodule_filtered_cb(const struct cache_entry *list_item,
+						void *cb_data)
+{
+	const char *path = list_item->name;
+	struct foreach_cb *info = cb_data;
+	int is_active;
+
+	if (FOREACH_BOOL_FILTER_NOT_SET != info->active) {
+		is_active = is_submodule_active(the_repository, path);
+		if (is_active != info->active)
+			return;
+	}
+
+	runcommand_in_submodule(list_item, info);
+}
+
 static int module_foreach(int argc, const char **argv, const char *prefix)
 {
 	struct foreach_cb info = FOREACH_CB_INIT;
@@ -569,13 +584,13 @@ static int module_foreach(int argc, const char **argv, const char *prefix)
 		OPT__QUIET(&info.quiet, N_("Suppress output of entering each submodule command")),
 		OPT_BOOL(0, "recursive", &info.recursive,
 			 N_("Recurse into nested submodules")),
-		OPT_BOOL(0, "only-active", &info.only_active,
-			 N_("Call command only for active submodules")),
+		OPT_BOOL(0, "active", &info.active,
+			 N_("Call command depending on submodule active state")),
 		OPT_END()
 	};
 
 	const char *const git_submodule_helper_usage[] = {
-		N_("git submodule--helper foreach [--quiet] [--recursive] [--only-active] [--] <command>"),
+		N_("git submodule--helper foreach [--quiet] [--recursive] [--[no-]active] [--] <command>"),
 		NULL
 	};
 
@@ -589,7 +604,7 @@ static int module_foreach(int argc, const char **argv, const char *prefix)
 	info.argv = argv;
 	info.prefix = prefix;
 
-	for_each_listed_submodule(&list, runcommand_in_submodule_cb, &info);
+	for_each_listed_submodule(&list, runcommand_in_submodule_filtered_cb, &info);
 
 	return 0;
 }
