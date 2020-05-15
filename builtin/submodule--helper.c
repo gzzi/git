@@ -451,11 +451,12 @@ struct foreach_cb {
 	int quiet;
 	int recursive;
 	int active;
+	int populated;
 };
 
 #define FOREACH_BOOL_FILTER_NOT_SET -1
 
-#define FOREACH_CB_INIT { .active=FOREACH_BOOL_FILTER_NOT_SET }
+#define FOREACH_CB_INIT { .active = FOREACH_BOOL_FILTER_NOT_SET, .populated = 1 }
 
 static void runcommand_in_submodule(const struct cache_entry *list_item,
 				    struct foreach_cb *info)
@@ -474,9 +475,6 @@ static void runcommand_in_submodule(const struct cache_entry *list_item,
 	if (!sub)
 		die(_("No url found for submodule path '%s' in .gitmodules"),
 			displaypath);
-
-	if (!is_submodule_populated_gently(path, NULL))
-		goto cleanup;
 
 	prepare_submodule_repo_env(&cp.env_array);
 
@@ -554,7 +552,6 @@ static void runcommand_in_submodule(const struct cache_entry *list_item,
 				displaypath);
 	}
 
-cleanup:
 	free(displaypath);
 }
 
@@ -571,6 +568,9 @@ static void runcommand_in_submodule_filtered_cb(const struct cache_entry *list_i
 			return;
 	}
 
+	if (info->populated != is_submodule_populated_gently(path, NULL))
+		return;
+
 	runcommand_in_submodule(list_item, info);
 }
 
@@ -586,11 +586,13 @@ static int module_foreach(int argc, const char **argv, const char *prefix)
 			 N_("Recurse into nested submodules")),
 		OPT_BOOL(0, "active", &info.active,
 			 N_("Call command depending on submodule active state")),
+		OPT_BOOL(0, "populated", &info.populated,
+			 N_("Call command depending on submodule populated state")),
 		OPT_END()
 	};
 
 	const char *const git_submodule_helper_usage[] = {
-		N_("git submodule--helper foreach [--quiet] [--recursive] [--[no-]active] [--] <command>"),
+		N_("git submodule--helper foreach [--quiet] [--recursive] [--[no-]active] [--[no-]populated] [--] <command>"),
 		NULL
 	};
 
